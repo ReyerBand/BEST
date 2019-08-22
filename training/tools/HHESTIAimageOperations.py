@@ -50,66 +50,6 @@ def getPFcandBranchNames(tree ):
 #----------------------------------------------------------------------------------
 # tree is TTree -------------------------------------------------------------------
 #----------------------------------------------------------------------------------
-def getBoostCandBranchNamesHiggs(tree ):
-   treeVars = []
-   for branch in tree.GetListOfBranches():
-      name = branch.GetName()
-      if 'HiggsFrame' in name:
-         if '_px' in name:
-            treeVars.append(name)
-         if '_py' in name:
-            treeVars.append(name)
-         if '_pz' in name:
-            treeVars.append(name)
-         if '_e' in name:
-            treeVars.append(name)
-
-   return treeVars
-def getBoostCandBranchNamesTop(tree ):
-   treeVars = []
-   for branch in tree.GetListOfBranches():
-      name = branch.GetName()
-      if 'TopFrame' in name:
-         if '_px' in name:
-            treeVars.append(name)
-         if '_py' in name:
-            treeVars.append(name)
-         if '_pz' in name:
-            treeVars.append(name)
-         if '_e' in name:
-            treeVars.append(name)
-
-   return treeVars
-def getBoostCandBranchNamesW(tree ):
-   treeVars = []
-   for branch in tree.GetListOfBranches():
-      name = branch.GetName()
-      if 'WFrame' in name:
-         if '_px' in name:
-            treeVars.append(name)
-         if '_py' in name:
-            treeVars.append(name)
-         if '_pz' in name:
-            treeVars.append(name)
-         if '_e' in name:
-            treeVars.append(name)
-
-   return treeVars
-def getBoostCandBranchNamesZ(tree ):
-   treeVars = []
-   for branch in tree.GetListOfBranches():
-      name = branch.GetName()
-      if 'ZFrame' in name:
-         if '_px' in name:
-            treeVars.append(name)
-         if '_py' in name:
-            treeVars.append(name)
-         if '_pz' in name:
-            treeVars.append(name)
-         if '_e' in name:
-            treeVars.append(name)
-
-   return treeVars
 
 def getBoostCandBranchNames(tree ):
 
@@ -120,25 +60,16 @@ def getBoostCandBranchNames(tree ):
    for branch in tree.GetListOfBranches():
       name = branch.GetName()
       # Only get PF branches
-      if '_px' in name:
+      if 'Frame_PF' in name:
          treeVars.append(name)
-      if '_py' in name:
+      if 'jetAK8_pt' in name:
          treeVars.append(name)
-      if '_pz' in name:
+      if 'jetAK8_phi' in name:
          treeVars.append(name)
-      if '_e' in name:
+      if 'jetAK8_eta' in name:
          treeVars.append(name)
-
-      # if 'Frame_PF' in name:
-      #    treeVars.append(name)
-      # if 'jetAK8_pt' in name:
-      #    treeVars.append(name)
-      # if 'jetAK8_phi' in name:
-      #    treeVars.append(name)
-      # if 'jetAK8_eta' in name:
-      #    treeVars.append(name)
-      # if 'jetAK8_mass' in name:
-      #    treeVars.append(name)
+      if 'jetAK8_mass' in name:
+         treeVars.append(name)
 
    return treeVars
 
@@ -218,14 +149,13 @@ def makeBoostCandFourVector(array):
    while n < len(array) :
       if n % 10000 == 0: print "Making 4 vector array for jet number: ", jetCount
       # loop over pf candidates
-      #changed index arguement to match changes to variable list
-      for i in range( len(array[n][0][:]) ) :
-         px = array[n][0][i]
-         py = array[n][1][i]
-         pz = array[n][2][i]
-         e = array[n][3][i]
-         candLV = root.TLorentzVector()
-         candLV.SetPxPyPzE(px, py, pz, e)
+      for i in range( len(array[n][4][:]) ) :
+         px = array[n][4][i]
+         py = array[n][5][i]
+         pz = array[n][6][i]
+         e = array[n][7][i]
+         candLV = root.TLorentzVector(px, py, pz, e)
+
          # List the most energetic candidate first
          if i == 0:
             tmpArray.append([jetCount, candLV])
@@ -448,7 +378,7 @@ def boostedRotationsRelBoostAxis(candArray, jetLV):
 #----------------------------------------------------------------------------------
 
 def prepareBoostedImages(candLV, jetArray, nbins, boostAxis ):
-#removed references here to the lab jet axis, since we aren't considering rotations around jet axis
+
     nx = nbins #30 # number of image bins in phi
     ny = nbins #30 # number of image bins in theta
     # set limits on relative phi and theta for the histogram
@@ -461,15 +391,20 @@ def prepareBoostedImages(candLV, jetArray, nbins, boostAxis ):
         # 2nd dim is eta bin
         # 3rd dim is phi bin
         # 4th dim is pt value (or rgb layer, etc.)
-       jet_images = numpy.zeros((len(jetArray), nx, ny, 1))
+        jet_images = numpy.zeros((len(jetArray), nx, ny, 1))
     else:        
-       jet_images = numpy.zeros((len(jetArray), 1, nx, ny))
+        jet_images = numpy.zeros((len(jetArray), 1, nx, ny))
 
     jetCount = 0    
     candNum = 0
     for i in range(0,len(jetArray)):
         jetNum = i + 1
         if i % 1000 == 0: print "Imaging jet number: ", jetNum
+
+        # make 4 vector of the jet
+        jetPt, jetEta, jetPhi, jetMass = jetArray[i][2], jetArray[i][1], jetArray[i][0], jetArray[i][3]
+        jetLV = root.TLorentzVector()
+        jetLV.SetPtEtaPhiM(jetPt, jetEta, jetPhi, jetMass)
 
         # get the ith jet candidate 4 vectors
         icandLV = []
@@ -488,8 +423,8 @@ def prepareBoostedImages(candLV, jetArray, nbins, boostAxis ):
         # perform boosted frame rotations
         if boostAxis == False : #use leading candidate as Z axis in rotations
            phiPrime,thetaPrime = boostedRotations(icandLV)
-#        if boostAxis == True : # use boost axis as Z axis in rotations
-#           phiPrime,thetaPrime = boostedRotationsRelBoostAxis(icandLV, jetLV)
+        if boostAxis == True : # use boost axis as Z axis in rotations
+           phiPrime,thetaPrime = boostedRotationsRelBoostAxis(icandLV, jetLV)
 
         # make the weight list into a numpy array
         totE = sum(weightList)
