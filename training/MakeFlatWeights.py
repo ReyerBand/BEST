@@ -95,24 +95,36 @@ bLabET = jetLabETDF['B']
 w_dict = {}
 
 
-
+batch_size = 1200
 for label in ['QCD', 'H', 'T', 'W', 'Z', 'B']:
    print label+':', len(jetLabETDF[label])
    w_dict[label] = numpy.zeros((len(jetLabETDF[label]), 1))
    it_hist = r.TH1F(label+'_source', label+'_source', 50, 0, 2500)
+   keep_list = []
    for entry, hist in enumerate(jetLabETDF[label]):
       it_hist.Fill(hist[0]) #Literally just turning the numpy array in the h5 back into a root hist.
       pass
    it_flat = r.TH1F(label+'_flat', label+'_flat', 50, 0, 2500)
+   test_flat = r.TH1F(label+'_sel_flat', label+'_selected_indices', 50, 0, 2500)
+
    for entry, hist in enumerate(jetLabETDF[label]):
       rand_seed = numpy.random.uniform(0, 1)
+#      print type(jetLabETDF[label]), type(hist), len(hist), type(hist[0])
       pt = hist[0]
       keep_chance = 100 / float(it_hist.GetBinContent(it_hist.FindBin(pt)))
       w_dict[label][entry] = keep_chance
       if keep_chance > rand_seed:
          it_flat.Fill(pt)
+         keep_list.append(entry)
          pass
       pass
+   numpy.random.shuffle(keep_list)
+   print len(keep_list)
+   keep_list = keep_list[0:batch_size]
+   print len(keep_list)
+   for index in keep_list:
+      sel_pt = jetLabETDF[label][index][0]
+      test_flat.Fill(sel_pt)
    canv = r.TCanvas('c1', 'c1')
    canv.cd()
    it_flat.Draw()
@@ -121,6 +133,9 @@ for label in ['QCD', 'H', 'T', 'W', 'Z', 'B']:
    it_hist.Draw()
    it_hist.SetMinimum(0.0)
    canv.SaveAs('Normal'+label+'_100bin.pdf')
+   test_flat.Draw()
+   test_flat.SetMinimum(0.0)
+   canv.SaveAs('SelectedIndices'+label+'_100bin1200Batch.pdf')
    h5f = h5py.File(label+'EventWeights.h5', 'w')
    h5f.create_dataset(label, data=w_dict[label], compression='lzf')
    print label+' Number of Events:', it_flat.Integral()

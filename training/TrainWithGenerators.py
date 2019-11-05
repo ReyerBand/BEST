@@ -50,8 +50,8 @@ h = tf.constant('hello world')
 print(sess.run(h))
 
 # set options 
-savePDF = False
-savePNG = True 
+savePDF = True
+savePNG = False 
 plotInputs = True
 #==================================================================================
 # Load Jet Images /////////////////////////////////////////////////////////////////
@@ -180,7 +180,9 @@ print besModel.output
 # Add BES variables to the network
 #combined = concatenate([HiggsImageModel.output, TopImageModel.output, WImageModel.output, ZImageModel.output, besModel.output])
 #Testing with just Higgs layer
-combined = concatenate([HiggsImageModel.output, besModel.output])
+combined = concatenate([HiggsImageModel.output, TopImageModel.output, besModel.output])
+
+#combined = besModel.output
 combLayer = Dense(40, kernel_initializer="glorot_normal", activation="relu" )(combined)
 combLayer = Dense(40, kernel_initializer="glorot_normal", activation="relu" )(combLayer)
 combLayer = Dropout(0.10)(combLayer)
@@ -189,8 +191,10 @@ outputBEST = Dense(6, kernel_initializer="glorot_normal", activation="softmax")(
 # compile the model
 #model_BEST = Model(inputs = [HiggsImageModel.input, TopImageModel.input, WImageModel.input, ZImageModel.input, besModel.input], outputs = outputBEST)
 #Testing with just Higgs
-model_BEST = Model(inputs = [HiggsImageModel.input, besModel.input], outputs = outputBEST)
+model_BEST = Model(inputs = [HiggsImageModel.input, TopImageModel.input, besModel.input], outputs = outputBEST)
+#model_BEST = Model(inputs = [HiggsImageModel.input], outputs = outputBEST)
 
+#model_BEST = Model(inputs = besModel.input, outputs = outputBEST)
 #Testing with just BEST layer
 #model_BEST = Model(inputs = [HiggsImageModel.input, besModel.input], outputs = outputBEST)
 #model_BEST = Model(inputs = besModel.input, outputs = outputBEST)
@@ -201,7 +205,7 @@ print(model_BEST.summary() )
 
 # early stopping
 
-early_stopping = EarlyStopping(monitor='val_loss', min_delta=0.0001, patience=20, verbose=0, mode='auto')
+early_stopping = EarlyStopping(monitor='val_loss', min_delta=0.0005, patience=50, verbose=0, mode='auto')
 
 # model checkpoint callback
 # this saves the model architecture + parameters into dense_model.h5
@@ -211,8 +215,9 @@ model_checkpoint = ModelCheckpoint('BEST_model.h5', monitor='val_loss',
                                    period=1)
 
 # train the neural network
-data_generator = GenerateBatch(batch_size = 1200)
-history = model_BEST.fit_generator(generator = data_generator.generator_train(), validation_data=data_generator.generator_valid(), steps_per_epoch = 5, epochs=200, callbacks=[early_stopping, model_checkpoint], validation_steps = 5) 
+data_generator = GenerateBatch(batch_size = 1200, validation_frac = 0.2, debug_info = False, debug_plots = False)
+print 'Starting training'
+history = model_BEST.fit_generator(generator = data_generator.generator_train(), validation_data=data_generator.generator_valid(), steps_per_epoch = 40, epochs=200, callbacks=[early_stopping, model_checkpoint], validation_steps = 5, use_multiprocessing = True, workers=4) 
 #Testing with just BES vars
 #history = model_BEST.fit([trainHiggsImages[:], trainBESvars[:]], trainTruth[:], batch_size=1000, epochs=200, callbacks=[early_stopping, model_checkpoint], validation_split = 0.15)
 
@@ -221,11 +226,46 @@ print "Trained the neural network!"
 # print model visualization
 #plot_model(model_HHESTIA, to_file='plots/boost_CosTheta_NN_Vis.png')
 
-# save the test data
+# Evaluate on ALL the data
+testHiggsImages = numpy.concatenate([data_generator.data['QCD_H'], data_generator.data['H_H'], data_generator.data['T_H'], data_generator.data['W_H'], data_generator.data['Z_H'], data_generator.data['B_H']])
+#print type(testHiggsImages)
+testTopImages = numpy.concatenate([data_generator.data['QCD_T'], data_generator.data['H_T'], data_generator.data['T_T'], data_generator.data['W_T'], data_generator.data['Z_T'], data_generator.data['B_T']])
+#testWImages = numpy.concatenate([data_generator.data['QCD_W'], data_generator.data['H_W'], data_generator.data['T_W'], data_generator.data['W_W'], data_generator.data['Z_W'], data_generator.data['B_W']])
+#testZImages = numpy.concatenate([data_generator.data['QCD_Z'], data_generator.data['H_Z'], data_generator.data['T_Z'], data_generator.data['W_Z'], data_generator.data['Z_Z'], data_generator.data['B_Z']])
 
-h5f = h5py.File("images/BESTtestDataFourFrame.h5","w")
+testBESvars = numpy.concatenate([data_generator.data['QCD_BES'], data_generator.data['H_BES'], data_generator.data['T_BES'], data_generator.data['W_BES'], data_generator.data['Z_BES'], data_generator.data['B_BES']])
+#print type(testBESvars)
+
+testTruth = numpy.concatenate([numpy.full(len(data_generator.data['QCD_H']), 4), numpy.full(len(data_generator.data['H_H']), 1), numpy.full(len(data_generator.data['T_H']), 2), numpy.full(len(data_generator.data['W_H']), 3), numpy.full(len(data_generator.data['Z_H']), 5), numpy.full(len(data_generator.data['B_H']), 0)])
+
+testTruth=to_categorical(testTruth, num_classes = 6)
+#print len(testHiggsImages), len(testBESvars), len(testTruth)
+#cm = metrics.confusion_matrix(numpy.argmax(model_BEST.predict([testHiggsImages[:], testTopImages[:], testWImages[:], testZImages[:], testBESvars[:] ]), axis=1), numpy.argmax(testTruth[:], axis=1) )
+cm = metrics.confusion_matrix(numpy.argmax(model_BEST.predict([testHiggsImages[:], testTopImages[:], testBESvars[:]]), axis=1), numpy.argmax(testTruth[:], axis=1) )
+
+plt.figure(
+)
+targetNames = ['B', 'H', 't', 'W', 'QCD', 'Z']
+tools.plot_confusion_matrix(cm.T, targetNames, normalize=True)
+if savePDF == True:
+   plt.savefig('plots/ConfusionFlatPtTwoFrames40Batch.pdf')
+if savePNG == True:
+   plt.savefig('plots/ConfusionFlatPtTwoFrames40Batch.png')
+plt.close()
+
+
+loss = [history.history['loss'], history.history['val_loss'] ]
+acc = [history.history['acc'], history.history['val_acc'] ]
+tools.plotPerformance(loss, acc, "FlatPT")
+
+exit()
+print 'Did not exit'
+joblib.dump(model_BEST, "BEST_keras_FlatPT.pkl")
+
+
+h5f = h5py.File("images/BEST_FlatPT.h5","w")
 h5f.create_dataset('test_HiggsImages', data=testHiggsImages, compression='lzf')
-#Testing just BES
+#Testing just BES                                                                                                                                                                                                           
 h5f.create_dataset('test_TopImages', data=testTopImages, compression='lzf')
 h5f.create_dataset('test_WImages', data=testWImages, compression='lzf')
 h5f.create_dataset('test_ZImages', data=testZImages, compression='lzf')
@@ -233,7 +273,6 @@ h5f.create_dataset('test_BES_vars', data=testBESvars, compression='lzf')
 h5f.create_dataset('test_truth', data=testTruth, compression='lzf')
 
 print "Saved the testing data!"
-
 
 #==================================================================================
 # Plot Training Results ///////////////////////////////////////////////////////////
@@ -248,9 +287,9 @@ plt.figure()
 targetNames = ['QCD', 'H', 't', 'W', 'Z', 'b']
 tools.plot_confusion_matrix(cm.T, targetNames, normalize=True)
 if savePDF == True:
-   plt.savefig('plots/boost_CosTheta_confusion_matrix_FourFrame.pdf')
+   plt.savefig('plots/boost_CosTheta_confusion_matrix_FlatPtOneFrame.pdf')
 if savePNG == True:
-   plt.savefig('plots/boost_CosTheta_confusion_matrix_FourFrame.png')
+   plt.savefig('plots/boost_CosTheta_confusion_matrix_FlatPtOneFrame.png')
 plt.close()
 
 # score
