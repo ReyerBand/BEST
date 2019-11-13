@@ -17,7 +17,7 @@ import itertools
 import types
 import tempfile
 import timeit
-
+import sys
 # grab some keras stuff
 from os import environ
 environ["KERAS_BACKEND"] = "tensorflow" #must set backend before importing keras
@@ -216,7 +216,7 @@ def makeBoostCandFourVector(array):
    n = 0
    # loop over jets
    while n < len(array) :
-      if n % 10000 == 0: print "Making 4 vector array for jet number: ", jetCount
+      if n % 10000 == 0: print "Making 4 vector array for jet number: ", jetCount, sys.getsizeof(tmpArray),"bytes"
       # loop over pf candidates
       #changed index arguement to match changes to variable list
       for i in range( len(array[n][0][:]) ) :
@@ -239,6 +239,7 @@ def makeBoostCandFourVector(array):
       n += 1
 
    newArray = copy.copy(tmpArray)
+   
    return newArray
 
 #==================================================================================
@@ -308,7 +309,7 @@ def boostedRotationsLeadZ(candArray):
 def boostedRotations(candArray):
    phiPrime = []
    thetaPrime = []
-
+   energyNorm = []
    # define the rotation angles for first two rotations
    rotPhi = candArray[0].Phi()
    rotTheta = candArray[0].Theta()
@@ -318,21 +319,25 @@ def boostedRotations(candArray):
    subleadE = -1
    leadE = candArray[0].E()
    leadLV = candArray[0]
+   it_counter = 0
    for icand in candArray :
-
-      # Waring for incorrect energy sorting
+      energyNorm.append(icand.E() / leadE)
+      it_counter+=1
+      # Warning for incorrect energy sorting
       if icand.E() > leadE : print "WARNING: Energy sorting was done incorrectly!"
 
       icand.RotateZ(-rotPhi)
       #set small py values to 0
-      if abs(icand.Py() ) < 0.01 : icand.SetPy(0) 
+      if icand.E() == leadE:
+         if abs(icand.Py() ) < 0.01 : icand.SetPy(0) 
 
       icand.RotateY(numpy.pi/2 - rotTheta)
 
       # make sure leading candidate vector has been rotated
-      if icand.E() == leadE : leadLV = icand
-      #set small px values to 0
-      if abs(icand.Pz() ) < 0.01 : icand.SetPz(0)
+      if icand.E() == leadE : 
+         leadLV = icand
+      #set small pZ values to 0
+         if abs(icand.Pz() ) < 0.01 : icand.SetPz(0)
 
       # Find subleading candidate
       if icand.E() > subleadE and icand.E() < leadE :
@@ -343,8 +348,9 @@ def boostedRotations(candArray):
             subPsi = numpy.arctan2(icand.Py(), icand.Pz() )
 
    # Perform the third rotation
+   it_counter = 0
    for icand in candArray :
-
+      it_counter+=1
       # warning for subleading identification
       if icand.E() > subleadE and icand.E() < leadE : 
          if abs( (icand.Phi() - leadLV.Phi() ) ) > 1.0 : print "WARNING: Subleading candidate was improperly identified!"  
@@ -352,8 +358,10 @@ def boostedRotations(candArray):
       # rotatate about x with psi to get to x-y plane      
       icand.RotateX(subPsi - numpy.pi/2)
 
-      #set small py values to 0
-      if abs(icand.Pz() ) < 0.01 : icand.SetPz(0)
+      #set small pz values to 0
+      #Only do this for the leading and sub-leading candidates, which by definition should have zero pz
+      if icand.E() == subleadE or icand.E() == leadE:
+         if abs(icand.Pz() ) < 0.01 : icand.SetPz(0)
 
       # store image info
       #phiPrime.append(icand.Phi() )
@@ -362,8 +370,9 @@ def boostedRotations(candArray):
    # Reflect if bottomSum > topSum and/or leftSum > rightSum
    leftSum, rightSum = 0, 0
    topSum, bottomSum = 0, 0
+   it_counter = 0
    for icand in candArray :
-     
+      it_counter+=1
       if icand.CosTheta() > 0 :
          topSum += icand.E()
       if icand.CosTheta() < 0 :
@@ -375,19 +384,22 @@ def boostedRotations(candArray):
          leftSum += icand.E()
 
    # store image info
+   if topSum == bottomSum :
+      print "Both sides are the same #EnlightenedCentrism#DumpCandidateInfo"
    for icand in candArray :
-
       if bottomSum > topSum :
          thetaPrime.append( -icand.CosTheta() )
       if topSum > bottomSum :
          thetaPrime.append( icand.CosTheta() )
+      if topSum == bottomSum :
+         print "Cos theta:", icand.CosTheta(), "Energy, Px, Py, Pz", icand.E(), icand.Px(), icand.Py(), icand.Pz()
 
       if leftSum > rightSum :
          phiPrime.append( -icand.Phi() )
       if leftSum < rightSum :
          phiPrime.append(icand.Phi() )
 
-   return numpy.array(phiPrime), numpy.array(thetaPrime)
+   return numpy.array(phiPrime), numpy.array(thetaPrime), numpy.array(energyNorm)
 
 #==================================================================================
 # Boosted Candidate Rotations relative to Boost Axis ------------------------------
@@ -447,66 +459,54 @@ def boostedRotationsRelBoostAxis(candArray, jetLV):
 # refFrame is the reference frame for the images to be created in -----------------
 #----------------------------------------------------------------------------------
 
-def prepareBoostedImages(candLV, jetArray, nbins, boostAxis ):
+def prepareBoostedImages(jet, which_frame, nbins=31):
 #removed references here to the lab jet axis, since we aren't considering rotations around jet axis
     nx = nbins #30 # number of image bins in phi
     ny = nbins #30 # number of image bins in theta
     # set limits on relative phi and theta for the histogram
     xbins = numpy.linspace(-numpy.pi,numpy.pi,nx+1)
     ybins = numpy.linspace(-1,1,ny+1)
-
     if K.image_dim_ordering()=='tf':
         # 4D tensor (tensorflow backend)
-        # 1st dim is jet index
-        # 2nd dim is eta bin
-        # 3rd dim is phi bin
-        # 4th dim is pt value (or rgb layer, etc.)
-       jet_images = numpy.zeros((len(jetArray), nx, ny, 1))
+        # 1st dim is eta bin
+        # 2nd dim is phi bin
+        # 3rd dim is pt value (or rgb layer, etc.)
+       jet_image = numpy.zeros((nx, ny, 1))
     else:        
-       jet_images = numpy.zeros((len(jetArray), 1, nx, ny))
+       jet_image = numpy.zeros((1, nx, ny))
 
-    jetCount = 0    
-    candNum = 0
-    for i in range(0,len(jetArray)):
-        jetNum = i + 1
-        if i % 1000 == 0: print "Imaging jet number: ", jetNum
+    #Make list of candidates as LorentzVector
+    candLV = []
+    sumE = 0
+    for i in xrange(0,len(jet.HiggsFrame_PF_candidate_px)):
+        candidate = root.TLorentzVector()
+        if which_frame == 'H': candidate.SetPxPyPzE(jet.HiggsFrame_PF_candidate_px[i], jet.HiggsFrame_PF_candidate_py[i], jet.HiggsFrame_PF_candidate_pz[i], jet.HiggsFrame_PF_candidate_e[i]) 
+        if which_frame == 'T': candidate.SetPxPyPzE(jet.TopFrame_PF_candidate_px[i], jet.TopFrame_PF_candidate_py[i], jet.TopFrame_PF_candidate_pz[i], jet.TopFrame_PF_candidate_e[i])
+        if which_frame == 'W': candidate.SetPxPyPzE(jet.WFrame_PF_candidate_px[i], jet.WFrame_PF_candidate_py[i], jet.WFrame_PF_candidate_pz[i], jet.WFrame_PF_candidate_e[i])
+        if which_frame == 'Z': candidate.SetPxPyPzE(jet.ZFrame_PF_candidate_px[i], jet.ZFrame_PF_candidate_py[i], jet.ZFrame_PF_candidate_pz[i], jet.ZFrame_PF_candidate_e[i])
+        sumE+=candidate.E()
+        candLV.append(candidate)
 
-        # get the ith jet candidate 4 vectors
-        icandLV = []
-        weightList = []
-        while jetCount <= jetNum :
-            jetCount = candLV[candNum][0]
-            if jetCount == jetNum:
-               icandLV.append(candLV[candNum][1])
-               # use candidate energy as weight
-               weightList.append(candLV[candNum][1].E() )
-               candNum += 1
-            # stop the loop for the last jet
-            if candNum == len(candLV):
-               break
-        
-        # perform boosted frame rotations
-        if boostAxis == False : #use leading candidate as Z axis in rotations
-           phiPrime,thetaPrime = boostedRotations(icandLV)
-#        if boostAxis == True : # use boost axis as Z axis in rotations
-#           phiPrime,thetaPrime = boostedRotationsRelBoostAxis(icandLV, jetLV)
+    # perform boosted frame rotations
+    # Needs to be sorted first!
+    candLV.sort(key = lambda x: x.E(), reverse=True)
+    phiPrime,thetaPrime,energyNorm = boostedRotations(candLV)
 
-        # make the weight list into a numpy array
-        totE = sum(weightList)
-        normWeight = [(weight / totE)*10 for weight in weightList] #normalize energy to that of the leading, multiply to be in pixel range (0 to 255)
-        weights = numpy.array(normWeight )
-        #weights = numpy.array(weightList ) #normWeight )
+    if sumE < 1.0:
+       print "No energy? Number of candidates", len(jet.HiggsFrame_PF_candidate_px)
 
-        # make a 2D numpy hist for the image
-        hist, xedges, yedges = numpy.histogram2d(phiPrime, thetaPrime, weights=weights, bins=(xbins,ybins))
-        for ix in range(0,nx):
-           for iy in range(0,ny):
-              if K.image_dim_ordering()=='tf':
-                 jet_images[i,ix,iy,0] = hist[ix,iy]
-              else:
-                 jet_images[i,0,ix,iy] = hist[ix,iy]
-
-    return jet_images
+       # make a 2D numpy hist for the image
+    if len(phiPrime) == 0 or len(thetaPrime) == 0 or len(energyNorm) == 0:
+       print "Length of phi, theta, weights", len(phiPrime), len(thetaPrime), len(weights)
+    
+    hist, xedges, yedges = numpy.histogram2d(phiPrime, thetaPrime, weights = energyNorm, bins=(xbins,ybins))
+    for ix in range(0,nx):
+       for iy in range(0,ny):
+          if K.image_dim_ordering()=='tf':
+             jet_image[ix,iy,0] = hist[ix,iy]
+          else:
+             jet_image[0,ix,iy] = hist[ix,iy]
+    return jet_image
 
 #==================================================================================
 # Plot Averaged Boosted Jet Images ------------------------------------------------

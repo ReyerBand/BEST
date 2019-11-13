@@ -110,23 +110,116 @@ def getBestBranchNames(tree ):
    # loop over branches
    for branch in tree.GetListOfBranches():
       name = branch.GetName()
-      if 'nJets' in name:
+
+      # if 'nJets' in name:
+      #    continue
+      # if 'SoftDropMass' in name:
+      #    continue
+      # if 'mass' in name:
+      #    continue
+      # if 'gen' in name:
+      #    continue
+      # if 'pt' in name:
+      #    continue
+      # if 'candidate' in name:
+      #    continue
+      # if 'subjet' in name:
+      #    continue
+      # if 'PuppiWeight' in name:
+      #    continue
+      # if 'NNout' in name:
+      #    continue
+      # if 'is' in name:
+      #    continue
+
+      if 'Njets' in name:
          continue
-      if 'SoftDropMass' in name:
+      if 'target' in name:
          continue
-      if 'mass' in name:
+      if 'NNout' in name:
          continue
       if 'gen' in name:
          continue
-      if 'pt' in name:
+      if 'flatten' in name:
          continue
-      if 'candidate' in name:
+      if 'dist' in name:
          continue
-      if 'subjet' in name:
+      if 'npv' in name:
          continue
-      treeVars.append(name)
+      if 'sorting' in name:
+         continue
+      if name == 'mass':
+         continue
+      if name == 'minDist':
+         continue
+      if 'et' in name:
+         continue
+      if 'Frame' in name:
+         continue
+      if 'Njets' in name:
+         continue
+      if 'target' in name:
+         continue
+      if 'NNout' in name:
+         continue
+      if 'gen' in name:
+         continue
+      if 'flatten' in name:
+         continue
+      if 'dist' in name:
+         continue
+      if 'npv' in name:
+         continue
+      if 'sorting' in name:
+         continue
+      if name == 'mass':
+         continue
+      if name == 'minDist':
+         continue
+      if 'et' in name:
+         continue
+      if name == 'isB':
+         continue
+      if name == 'isT':
+         continue
+      if name == 'isW':
+         continue
+      if name == 'isZ':
+         continue
+      if name == 'isH':
+         continue
+      if 'over' in name:
+         continue
+      if 'CSV' in name:
+         continue
+      if 'PF' in name:
+         continue
+      if 'm12_' in name and not 'm12_H' in name:
+         continue
+      if 'm13_' in name and not 'm13_H' in name:
+         continue
+      if 'm23_' in name and not 'm23_H' in name:
+         continue
+      if 'm1234_' in name and not 'm1234_H' in name:
+         continue
+      if 'isotropy' in name and not 'isotropy_H' in name:
+         continue
+      if 'sumP' in name:
+         continue
+      if 'PuppiWeight' in name:
+         continue
 
+      treeVars.append(name)
+   print len(treeVars), "variables used in BES will be:", treeVars
    return treeVars
+
+#==================================================================================                                                                                                                          
+# Save BES Vars to a numpy array ////////////////////////////////////////////////////////                                                                                                                     
+def GetBESVars(jet, treeVars):
+   bes_vars = []
+   for var_name in treeVars:
+      bes_vars.append(getattr(jet,var_name))
+   return numpy.array(bes_vars)
 
 #==================================================================================
 # Append Arrays from trees ////////////////////////////////////////////////////////
